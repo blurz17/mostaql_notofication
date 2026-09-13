@@ -162,6 +162,18 @@ def send_alert(chat_id, offer: Offer):
     except Exception as e:
         logger.error(f'Failed to send alert to {chat_id}: {e}')
 
+def send_document_to_telegram(chat_id, file_path, caption):
+    try:
+        with open(file_path, 'rb') as f:
+            bot.send_document(
+                chat_id=chat_id,
+                document=f,
+                caption=caption
+            )
+            logger.info(f"Successfully sent bulk document to {chat_id}")
+    except Exception as e:
+        logger.error(f"Failed to send document to {chat_id}: {e}")
+
 HTML_TEMPLATE = '''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -201,7 +213,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <p class="warning">⚠️ Notice: Fetching more than 50 projects via the web may timeout. Keep it small for web downloads!</p>
         <form action="/bulk" method="POST">
             <label for="num_projects">Number of Projects to Fetch:</label>
-            <input type="number" id="num_projects" name="num_projects" value="25" min="1" max="100" required>
+            <input type="number" id="num_projects" name="num_projects" value="500" min="1" required>
             <button class="btn" type="submit">Fetch & View Now</button>
         </form>
     </div>
@@ -282,7 +294,15 @@ def background_task(num, task_id):
         filepath = f"downloads/{task_id}.html"
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(html)
+            
         tasks[task_id]['status'] = 'done'
+        
+        # Send the file via Telegram to the user!
+        progress_callback("Sending file to your Telegram app...")
+        for chat_id in chat_ids:
+            send_document_to_telegram(chat_id, filepath, f"Here are your {num} Mostaql projects! 🚀")
+            
+        progress_callback("Done! Sent to your Telegram.")
     except Exception as e:
         tasks[task_id]['status'] = 'error'
         tasks[task_id]['progress'] = str(e)
