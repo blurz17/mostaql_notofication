@@ -1,9 +1,25 @@
 import requests
+import os
 import random
 import telebot
+try:
+    import config
+    BOT_TOKEN = config.bot_token
+    CHAT_IDS = config.chat_ids
+except ImportError:
+    BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+    CHAT_IDS = [int(x.strip()) for x in os.environ.get("TELEGRAM_CHAT_IDS", "").split(",") if x.strip()]
+
+if not BOT_TOKEN or not CHAT_IDS:
+    raise ValueError("Missing Bot Token or Chat IDs in configuration.")
 import time
 import logging
-from config import *
+try:
+    from config import *
+except ImportError:
+    pass
+bot_token = BOT_TOKEN
+chat_ids = CHAT_IDS
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database import init_db, offer_exists, add_offer, Offer
 from bs4 import BeautifulSoup
