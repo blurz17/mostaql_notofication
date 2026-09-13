@@ -85,7 +85,13 @@ def clean_text(text, max_len=1000):
 def get_offer_description(offer_id):
     logger.info(f'Fetching offer_id: {offer_id}')
     set_new_proxy()
-    response = requests_session.get(project_page_url + str(offer_id))
+    
+    try:
+        # Added timeout to prevent hanging
+        response = requests_session.get(project_page_url + str(offer_id), timeout=15)
+    except Exception as e:
+        logger.error(f'Timeout or connection error fetching {offer_id}: {e}')
+        return None
     
     # Use built-in html.parser instead of lxml
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -170,43 +176,48 @@ if __name__ == '__main__':
     threading.Thread(target=start_dummy_server, daemon=True).start()
     logger.info("Started dummy web server for health checks.")
     
+    # Give Tor network 30 seconds to fully bootstrap before making the first request
+    logger.info("Waiting 30 seconds for Tor to initialize...")
+    time.sleep(30)
+    
     while True:
         set_new_proxy()
-    try:
-        response = requests_session.get(projects_page_url)
-        # Handle cases where response might not be JSON (e.g. 403 Forbidden)
         try:
-            offers = response.json().get('collection', [])
-        except ValueError:
-            logger.error(f"Failed to parse JSON. Status code: {response.status_code}")
-            offers = []
-            
-        if offers:
-            logger.info(f'Fetched {len(offers)} offers from API')
+            response = requests_session.get(projects_page_url, timeout=15)
+            # Handle cases where response might not be JSON (e.g. 403 Forbidden)
+            try:
+                offers = response.json().get('collection', [])
+            except ValueError:
+                logger.error(f"Failed to parse JSON. Status code: {response.status_code}")
+                offers = []
+                
+            if offers:
+                logger.info(f'Fetched {len(offers)} offers from API')
 
-        for offer_data in offers:
-            offer_id = offer_data.get('id')
-            if not offer_id:
-                continue
+            for offer_data in offers:
+                offer_id = offer_data.get('id')
+                
+                if not offer_id:
+                    continue
+                
+                # 1. Check if offer exists in DB
+                if offer_exists(offer_id):
+                    continue
+                
+                # 2. Fetch HTML page details (Fixed redundant request)
+                offer_to_send = get_offer_description(offer_id)
+                if not offer_to_send:
+                    continue
+                
+                # 3. Add to Database
+                add_offer(offer_to_send)
+                
+                # 4. Send Telegram alerts
+                for chat_id in chat_ids:
+                    send_alert(chat_id, offer_to_send)
 
-            # 1. Skip if already processed in DB
-            if offer_exists(offer_id):
-                continue
+        except Exception as e:
+            logger.error(f'Error occurred in main loop: {e}')
             
-            # 2. Fetch HTML page details (Fixed redundant request)
-            offer_to_send = get_offer_description(offer_id)
-            if not offer_to_send:
-                continue
-            
-            # 3. Add to Database
-            add_offer(offer_to_send)
-            
-            # 4. Send Telegram alerts
-            for chat_id in chat_ids:
-                send_alert(chat_id, offer_to_send)
-
-    except Exception as e:
-        logger.error(f'Error occurred in main loop: {e}')
-        
-    logger.info('Sleeping for 1 minute to release resources')
-    time.sleep(60)
+        logger.info('Sleeping for 1 minute to release resources')
+        time.sleep(60)
