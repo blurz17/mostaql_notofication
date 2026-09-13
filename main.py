@@ -15,7 +15,9 @@ if not BOT_TOKEN or not CHAT_IDS:
 import time
 import logging
 import threading
-from flask import Flask, request, redirect, render_template_string
+import uuid
+import os
+from flask import Flask, request, redirect, render_template_string, jsonify, send_file
 from fetch_bulk import run_bulk_scrape
 try:
     from config import *
@@ -208,6 +210,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
 app = Flask(__name__)
 bot_active = True
+tasks = {}
 
 @app.route('/')
 def index():
@@ -219,15 +222,94 @@ def toggle():
     bot_active = not bot_active
     return redirect('/')
 
+LOADING_TEMPLATE = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fetching Projects...</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #121212; color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+        .card { background: #1e1e1e; border-radius: 12px; padding: 2rem; width: 100%; max-width: 500px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center; }
+        h2 { color: #4facfe; margin-top: 0; }
+        #log { background: #000; color: #0f0; padding: 1rem; border-radius: 8px; font-family: monospace; font-size: 0.9rem; margin: 1rem 0; min-height: 50px; text-align: left; }
+        .btn { background: #4facfe; color: #fff; text-decoration: none; padding: 0.75rem 1.5rem; border-radius: 6px; font-weight: bold; display: none; transition: 0.3s; margin-top: 1rem; }
+        .btn:hover { background: #00f2fe; }
+        .btn-home { background: #333; margin-top: 10px; display: inline-block; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>⏳ Scraping in Progress...</h2>
+        <p>Your server is securely scraping Mostaql using Tor. Please wait.</p>
+        <div id="log">Initializing...</div>
+        <a id="download-btn" class="btn" href="#">📥 Download HTML File</a>
+        <br><a href="/" class="btn btn-home" style="display:inline-block">← Back to Dashboard</a>
+    </div>
+
+    <script>
+        const taskId = "{{ task_id }}";
+        const logEl = document.getElementById('log');
+        const downloadBtn = document.getElementById('download-btn');
+        
+        const interval = setInterval(async () => {
+            const res = await fetch('/status/' + taskId);
+            const data = await res.json();
+            
+            logEl.innerText = data.progress;
+            
+            if (data.status === 'done') {
+                clearInterval(interval);
+                downloadBtn.href = '/download/' + taskId;
+                downloadBtn.style.display = 'inline-block';
+                logEl.innerText += "\\n\\n✅ Finished successfully!";
+            } else if (data.status === 'error') {
+                clearInterval(interval);
+                logEl.style.color = '#ff5252';
+                logEl.innerText += "\\n\\n❌ Error occurred.";
+            }
+        }, 2000);
+    </script>
+</body>
+</html>'''
+
+def background_task(num, task_id):
+    def progress_callback(msg):
+        tasks[task_id]['progress'] = msg
+        
+    try:
+        html = run_bulk_scrape(num, use_tor=USE_TOR, progress_callback=progress_callback)
+        os.makedirs('downloads', exist_ok=True)
+        filepath = f"downloads/{task_id}.html"
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(html)
+        tasks[task_id]['status'] = 'done'
+    except Exception as e:
+        tasks[task_id]['status'] = 'error'
+        tasks[task_id]['progress'] = str(e)
+
 @app.route('/bulk', methods=['POST'])
 def bulk():
     try:
         num = int(request.form.get('num_projects', 25))
     except ValueError:
         num = 25
-    # Use Tor if globally enabled
-    html_result = run_bulk_scrape(num, use_tor=USE_TOR)
-    return html_result
+    
+    task_id = str(uuid.uuid4())
+    tasks[task_id] = {'status': 'processing', 'progress': 'Initializing Tor connection...'}
+    
+    threading.Thread(target=background_task, args=(num, task_id), daemon=True).start()
+    return render_template_string(LOADING_TEMPLATE, task_id=task_id)
+
+@app.route('/status/<task_id>')
+def status(task_id):
+    return jsonify(tasks.get(task_id, {'status': 'error', 'progress': 'Task not found'}))
+
+@app.route('/download/<task_id>')
+def download(task_id):
+    filepath = f"downloads/{task_id}.html"
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True, download_name=f"mostaql_bulk_{task_id[:6]}.html")
+    return "File not found", 404
 
 @app.route('/ping')
 @app.route('/', methods=['HEAD'])

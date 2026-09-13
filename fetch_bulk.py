@@ -27,12 +27,14 @@ def clean_text(text):
     import re
     return re.sub(r'\s+', ' ', text).strip() if text else 'N/A'
 
-def run_bulk_scrape(num_target: int, use_tor: bool = True) -> str:
+def run_bulk_scrape(num_target: int, use_tor: bool = True, progress_callback=None) -> str:
     global USE_TOR
     USE_TOR = use_tor
 
     pages_needed = math.ceil(num_target / 25)
-    print(f"\nFetching {pages_needed} pages to get {num_target} projects...")
+    msg = f"\nFetching {pages_needed} pages to get {num_target} projects..."
+    print(msg)
+    if progress_callback: progress_callback(msg)
 
     all_txt_lines = []
     html_cards = []
@@ -41,19 +43,25 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True) -> str:
     for page in range(1, pages_needed + 1):
         set_new_proxy()
         url = f'https://mostaql.com/projects?page={page}&sort=latest'
-        print(f"--- Fetching API page {page}/{pages_needed} ---")
+        msg = f"--- Fetching API page {page}/{pages_needed} ---"
+        print(msg)
+        if progress_callback: progress_callback(msg)
         
         try:
             response = requests_session.get(url, timeout=15)
             if response.status_code != 200:
-                print(f"Blocked or error on API page {page} (Status code {response.status_code}).")
+                msg = f"Blocked or error on API page {page} (Status code {response.status_code})."
+                print(msg)
+                if progress_callback: progress_callback(msg)
                 break
                 
             data = response.json()
             collection = data.get('collection', [])
             
             if not collection:
-                print("No more projects found on this page.")
+                msg = "No more projects found on this page."
+                print(msg)
+                if progress_callback: progress_callback(msg)
                 break
                 
             for item in collection:
@@ -64,7 +72,9 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True) -> str:
                 if not offer_id:
                     continue
                 
-                print(f"[{fetched_count + 1}/{num_target}] Scraping full details for project {offer_id}...")
+                msg = f"[{fetched_count + 1}/{num_target}] Scraping full details for project {offer_id}..."
+                print(msg)
+                if progress_callback: progress_callback(msg)
                 
                 # Fetch full project page exactly like the main.py script
                 set_new_proxy()
@@ -127,13 +137,17 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True) -> str:
                 time.sleep(1.5)
                 
         except Exception as e:
-            print(f"Error fetching API page {page}: {e}")
+            msg = f"Error fetching API page {page}: {e}"
+            print(msg)
+            if progress_callback: progress_callback(msg)
             break
             
         if fetched_count >= num_target:
             break
             
-    print(f"\nSuccessfully fetched {fetched_count} projects. Saving to files...")
+    msg = f"\nSuccessfully fetched {fetched_count} projects."
+    print(msg)
+    if progress_callback: progress_callback(msg)
     
     html_content = f'''<!DOCTYPE html>
 <html lang="ar" dir="rtl">
