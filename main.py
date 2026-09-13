@@ -14,6 +14,8 @@ if not BOT_TOKEN or not CHAT_IDS:
     raise ValueError("Missing Bot Token or Chat IDs in configuration.")
 import time
 import logging
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 try:
     from config import *
 except ImportError:
@@ -151,8 +153,25 @@ def send_alert(chat_id, offer: Offer):
     except Exception as e:
         logger.error(f'Failed to send alert to {chat_id}: {e}')
 
-while True:
-    set_new_proxy()
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b"Bot is active and running 24/7!")
+
+def start_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    server.serve_forever()
+
+if __name__ == '__main__':
+    # Start the dummy web server in the background for Render.com
+    threading.Thread(target=start_dummy_server, daemon=True).start()
+    logger.info("Started dummy web server for health checks.")
+    
+    while True:
+        set_new_proxy()
     try:
         response = requests_session.get(projects_page_url)
         # Handle cases where response might not be JSON (e.g. 403 Forbidden)
