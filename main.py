@@ -15,7 +15,8 @@ if not BOT_TOKEN or not CHAT_IDS:
 import time
 import logging
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from flask import Flask, request, redirect, render_template_string
+from fetch_bulk import run_bulk_scrape
 try:
     from config import *
 except ImportError:
@@ -159,33 +160,89 @@ def send_alert(chat_id, offer: Offer):
     except Exception as e:
         logger.error(f'Failed to send alert to {chat_id}: {e}')
 
-class DummyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(b"Bot is active and running 24/7!")
-        
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
+HTML_TEMPLATE = '''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mostaql Bot Dashboard</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #121212; color: #fff; margin: 0; padding: 2rem; display: flex; flex-direction: column; align-items: center; }
+        .card { background: #1e1e1e; border-radius: 12px; padding: 2rem; width: 100%; max-width: 500px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); margin-bottom: 2rem; }
+        h2 { margin-top: 0; color: #4facfe; }
+        .status { display: inline-block; padding: 0.5rem 1rem; border-radius: 20px; font-weight: bold; margin-bottom: 1rem; }
+        .status.active { background: #1b5e20; color: #a5d6a7; }
+        .status.paused { background: #b71c1c; color: #ffcdd2; }
+        .btn { background: #4facfe; color: #fff; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: bold; width: 100%; transition: 0.3s; }
+        .btn:hover { background: #00f2fe; }
+        .btn-danger { background: #e53935; }
+        .btn-danger:hover { background: #ff5252; }
+        input[type="number"] { width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid #333; background: #2d2d2d; color: #fff; margin-bottom: 1rem; box-sizing: border-box; }
+        .warning { font-size: 0.85rem; color: #ffb74d; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🤖 Telegram Bot Status</h2>
+        <div class="status {{ 'active' if bot_active else 'paused' }}">
+            {{ '🟢 ACTIVE (Scraping every minute)' if bot_active else '🔴 PAUSED' }}
+        </div>
+        <form action="/toggle" method="POST">
+            <button class="btn {{ 'btn-danger' if bot_active else '' }}" type="submit">
+                {{ 'Pause Bot' if bot_active else 'Start Bot' }}
+            </button>
+        </form>
+    </div>
 
-def start_dummy_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), DummyHandler)
-    server.serve_forever()
+    <div class="card">
+        <h2>📥 Fetch Bulk Projects</h2>
+        <p class="warning">⚠️ Notice: Fetching more than 50 projects via the web may timeout. Keep it small for web downloads!</p>
+        <form action="/bulk" method="POST">
+            <label for="num_projects">Number of Projects to Fetch:</label>
+            <input type="number" id="num_projects" name="num_projects" value="25" min="1" max="100" required>
+            <button class="btn" type="submit">Fetch & View Now</button>
+        </form>
+    </div>
+</body>
+</html>'''
 
-if __name__ == '__main__':
-    # Start the dummy web server in the background for Render.com
-    threading.Thread(target=start_dummy_server, daemon=True).start()
-    logger.info("Started dummy web server for health checks.")
-    
-    # Give Tor network 30 seconds to fully bootstrap before making the first request
+app = Flask(__name__)
+bot_active = True
+
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE, bot_active=bot_active)
+
+@app.route('/toggle', methods=['POST'])
+def toggle():
+    global bot_active
+    bot_active = not bot_active
+    return redirect('/')
+
+@app.route('/bulk', methods=['POST'])
+def bulk():
+    try:
+        num = int(request.form.get('num_projects', 25))
+    except ValueError:
+        num = 25
+    # Use Tor if globally enabled
+    html_result = run_bulk_scrape(num, use_tor=USE_TOR)
+    return html_result
+
+@app.route('/ping')
+@app.route('/', methods=['HEAD'])
+def ping():
+    return "OK", 200
+
+def scraping_loop():
     logger.info("Waiting 30 seconds for Tor to initialize...")
     time.sleep(30)
     
     while True:
+        if not bot_active:
+            time.sleep(10)
+            continue
+            
         set_new_proxy()
         try:
             response = requests_session.get(projects_page_url, timeout=15)
@@ -226,3 +283,11 @@ if __name__ == '__main__':
             
         logger.info('Sleeping for 1 minute to release resources')
         time.sleep(60)
+
+if __name__ == '__main__':
+    # Start the scraping bot in a background thread
+    threading.Thread(target=scraping_loop, daemon=True).start()
+    
+    # Start the beautiful Flask UI server on the main thread
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)

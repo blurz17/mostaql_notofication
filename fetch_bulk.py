@@ -27,17 +27,12 @@ def clean_text(text):
     import re
     return re.sub(r'\s+', ' ', text).strip() if text else 'N/A'
 
-def fetch_bulk():
-    try:
-        num_target = int(input("How many recent projects do you want to fetch? (e.g. 500): "))
-    except ValueError:
-        print("Please enter a valid number.")
-        return
+def run_bulk_scrape(num_target: int, use_tor: bool = True) -> str:
+    global USE_TOR
+    USE_TOR = use_tor
 
     pages_needed = math.ceil(num_target / 25)
     print(f"\nFetching {pages_needed} pages to get {num_target} projects...")
-    print("NOTE: Because you want the COMPLETE details and budget, the script will visit each project's page individually.")
-    print("This will take a little while! Please be patient.\n")
 
     all_txt_lines = []
     html_cards = []
@@ -161,13 +156,14 @@ def fetch_bulk():
 </body>
 </html>'''
 
-    with open('bulk_projects.html', 'w', encoding='utf-8') as f:
-        f.write(html_content)
-        
-    with open('bulk_projects.txt', 'w', encoding='utf-8') as f:
-        f.write("\n".join(all_txt_lines))
-        
-    print("Done! Check 'bulk_projects.html' and 'bulk_projects.txt' in your folder.")
+    return html_content
 
 if __name__ == "__main__":
-    fetch_bulk()
+    try:
+        num = int(input("How many recent projects do you want to fetch? (e.g. 50): "))
+    except ValueError:
+        num = 25
+    html_out = run_bulk_scrape(num, use_tor=False)
+    with open('bulk_projects.html', 'w', encoding='utf-8') as f:
+        f.write(html_out)
+    print("Done! Saved to bulk_projects.html")
