@@ -1,0 +1,24 @@
+# Virtual Environment
+venv/
+env/
+.env
+
+# Credentials (CRITICAL)
+config.py
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# Database & Logs
+mostaql_offers.db
+mostaql_bot.log
+
+# Generated output files
+bulk_projects.txt
+bulk_projects.html
+test_page.html
+test_card.html
+extracted.txt
+extracted_desc.txt
+extracted2.txt
