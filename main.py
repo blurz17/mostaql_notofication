@@ -69,7 +69,7 @@ requests_session.headers = {
 
 # --- CONFIGURATION ---
 # Set to False if you run this on a local home network and don't need Tor
-USE_TOR = True
+USE_TOR = False 
 # ---------------------
 
 def set_new_proxy():
