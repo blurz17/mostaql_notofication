@@ -52,6 +52,12 @@ init_db()
 
 bot = telebot.TeleBot(bot_token)
 
+# Only these two categories should trigger Telegram alerts / be kept
+ALLOWED_CATEGORIES = {
+    "برمجة، تطوير المواقع والتطبيقات",
+    "ذكاء اصطناعي وتعلم الآلة",
+}
+
 project_page_url  = "https://mostaql.com/project/"
 projects_page_url = 'https://mostaql.com/projects?category=business,development,engineering-architecture,design,marketing,writing-translation,support&budget_max=10000&sort=latest&_=1688336827002'
 
@@ -373,10 +379,15 @@ def scraping_loop():
                 if not offer_to_send:
                     continue
                 
-                # 3. Add to Database
+                # 3. Add to Database (always, so we don't refetch it again next loop)
                 add_offer(offer_to_send)
                 
-                # 4. Send Telegram alerts
+                # 4. Only alert for the two categories we care about
+                if offer_to_send.category not in ALLOWED_CATEGORIES:
+                    logger.info(f'Skipping offer_id {offer_id} - category not allowed: {offer_to_send.category}')
+                    continue
+                
+                # 5. Send Telegram alerts
                 for chat_id in chat_ids:
                     send_alert(chat_id, offer_to_send)
 

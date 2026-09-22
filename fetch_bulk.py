@@ -7,6 +7,12 @@ from bs4 import BeautifulSoup
 # This configuration controls whether to use Tor to bypass Mostaql blocks
 USE_TOR = False
 
+# Only these two categories should be kept in the bulk output
+ALLOWED_CATEGORIES = {
+    "برمجة، تطوير المواقع والتطبيقات",
+    "ذكاء اصطناعي وتعلم الآلة",
+}
+
 requests_session = requests.Session()
 requests_session.headers = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -31,8 +37,11 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True, progress_callback=Non
     global USE_TOR
     USE_TOR = use_tor
 
-    pages_needed = math.ceil(num_target / 25)
-    msg = f"\nFetching {pages_needed} pages to get {num_target} projects..."
+    # Because we filter down to two categories, we may need to page through
+    # far more than num_target/25 pages to find enough matches. Keep going
+    # until we hit the target, run out of data, or hit this safety cap.
+    max_pages = math.ceil(num_target / 25) * 20 + 20
+    msg = f"\nFetching up to {max_pages} pages to get {num_target} matching projects..."
     print(msg)
     if progress_callback: progress_callback(msg)
 
@@ -40,10 +49,10 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True, progress_callback=Non
     html_cards = []
 
     fetched_count = 0
-    for page in range(1, pages_needed + 1):
+    for page in range(1, max_pages + 1):
         set_new_proxy()
         url = f'https://mostaql.com/projects?page={page}&sort=latest'
-        msg = f"--- Fetching API page {page}/{pages_needed} ---"
+        msg = f"--- Fetching API page {page}/{max_pages} ---"
         print(msg)
         if progress_callback: progress_callback(msg)
         
@@ -72,7 +81,7 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True, progress_callback=Non
                 if not offer_id:
                     continue
                 
-                msg = f"[{fetched_count + 1}/{num_target}] Scraping full details for project {offer_id}..."
+                msg = f"[{fetched_count}/{num_target}] Checking project {offer_id}..."
                 print(msg)
                 if progress_callback: progress_callback(msg)
                 
@@ -109,7 +118,12 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True, progress_callback=Non
                 price = clean_text(price)
                 owner = clean_text(owner)
                 description = clean_text(description)
-                
+
+                # Skip projects that aren't in one of the two allowed categories
+                if category not in ALLOWED_CATEGORIES:
+                    time.sleep(1.5)
+                    continue
+
                 # Format for TXT file
                 all_txt_lines.append(f"Title: {title}")
                 all_txt_lines.append(f"Category: {category}")
@@ -132,6 +146,9 @@ def run_bulk_scrape(num_target: int, use_tor: bool = True, progress_callback=Non
                 ''')
                 
                 fetched_count += 1
+                msg = f"[{fetched_count}/{num_target}] Matched: {title}"
+                print(msg)
+                if progress_callback: progress_callback(msg)
                 
                 # Crucial sleep to prevent IP bans while mass-scraping individual pages
                 time.sleep(1.5)
