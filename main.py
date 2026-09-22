@@ -364,7 +364,7 @@ def scraping_loop():
             if offers:
                 logger.info(f'Fetched {len(offers)} offers from API')
 
-            for offer_data in offers:
+            for offer_data in reversed(offers):
                 offer_id = offer_data.get('id')
                 
                 if not offer_id:
