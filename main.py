@@ -59,8 +59,7 @@ ALLOWED_CATEGORIES = {
 }
 
 project_page_url  = "https://mostaql.com/project/"
-projects_page_url = 'https://mostaql.com/projects?category=business,development,engineering-architecture,design,marketing,writing-translation,support&budget_max=10000&sort=latest&_=1688336827002'
-
+projects_page_url = 'https://mostaql.com/projects?category=business,development,engineering-architecture,design,marketing,writing-translation,support,ai-machine-learning&budget_max=10000&sort=latest&_=1688336827002'
 requests_session = requests.Session()
 requests_session.headers = {
     'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
